@@ -1,5 +1,9 @@
 #pragma once
 
+#include "OpenData.h"
+
+#define DEBUG_FLAG false
+
 class OpenWeather 
 {
   private:
@@ -15,6 +19,7 @@ class OpenWeather
     uint16_t arrayLevel; 
 
   public:
+  
   /*
    * owm_token - given token for using open weather map
    */
