@@ -15,6 +15,7 @@
 #include <Adafruit_SSD1306.h>
 #include "configs.h"
 #include "functions.h"
+#include "OpenWeather.h"
 
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
@@ -37,6 +38,7 @@ const char* mqtt_server = MQTTSERVER; // mqtt server addr
 const int mqtt_port = MQTTPORT; // mqtt port
 const char* mqtt_user = MQTTUSER; // if mqtt anonymous with user and pass
 const char* mqtt_pass = MQTTPASS;
+const char* owm_token = OWMTOKEN;
 
 const int LED_PIN = D5;
 const int button = D4;
@@ -52,6 +54,7 @@ String formattedDate;
 String dayStamp;
 String timeStamp;
 String day, month, year;
+String city = "Kharkiv";
 String units = "metric";  // or "imperial"
 String language = "en";
 unsigned long updateTimeDHT = 0;
@@ -75,6 +78,8 @@ void callbackOnMessage(char* topic, byte* payload, unsigned int length);
 void readDHT();
 void gasSensorSetup();
 void getWeather();
+void printWeather();
+void printDatetime();
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 DHT dht(DHTPIN, DHT11);
@@ -86,6 +91,9 @@ NTPClient timeClient(ntpUDP, "pool.ntp.org", UTC_OFFSET);
 
 WiFiClient wfc;
 PubSubClient mqttClient(mqtt_server, mqtt_port, callbackOnMessage, wfc);
+
+OpenWeather weather(owm_token);
+OW_current* current_weather = new OW_current;
 
 void setup() {
   Serial.begin(115200);
@@ -104,6 +112,7 @@ void setup() {
 
   dht.begin();
   gasSensorSetup();
+  getWeather();
 }
 
 void loop() {
@@ -112,7 +121,8 @@ void loop() {
     updateTimeDHT = millis();
 
     readDHT();
-    drawPage1();
+    //    drawPage1();
+    drawPage2();
   }
 }
 
@@ -123,6 +133,7 @@ void drawPage1()
   //  drawCloud(0, 0);
   printDatetime();
   drawThermometer(4, 13);
+
   //publishDhtData(temperature, humidity, ppm);
   // print temperatute THERMOMETER_WIDTH
   oledPrint(String(temperature), 2 + LITTLE_CLOUD_WIDTH, 16, 0);
@@ -142,6 +153,46 @@ void drawPage1()
   display.display();
 }
 
+
+void drawPage2()
+{
+  display.clearDisplay();
+  display.setTextColor(WHITE, BLACK);
+  printDateTime();
+  drawCloud(0, 12);
+  // update weather one time per hour
+  if (millis() - updateTimeWeather > HOURS_IN_MLSECS(1))
+  {
+    updateTimeWeather = millis();
+    getWeather();
+  }
+  printWeather();
+  display.display();
+}
+
+void printWeather()
+{
+  float   temp = current_weather->temp;
+  float   feels_like = current_weather->feels_like;
+  float   pressure = current_weather->pressure;
+  uint8_t humidity = current_weather->humidity;
+  uint8_t louds = current_weather->clouds;
+  int     wind_speed = current_weather->wind_speed;
+  String  main = current_weather->main;
+  String  description = current_weather->description;
+  String  city = current_weather->city;
+  
+  oledPrint(city, 2 + CLOUD_WIDTH, 10);
+}
+
+void getWeather()
+{
+  bool isParsed = weather.getWeatherData(current_weather, city, units, language);
+  if (!isParsed)
+  {
+    Serial.println("Failed to get weather! Try again.");
+  }
+}
 
 /*
    String str, uint16_t x = 0, uint16_t y = 0, bool newLine = 1, uint16_t textSize = 1, uint16_t color = WHITE
@@ -207,25 +258,30 @@ void drawLittleCloud(uint16_t x, uint16_t y, bool d)
   }
 }
 
-void printDatetime()
+void getDateTime()
 {
+  timeClient.update();
+  formattedDate = timeClient.getFormattedDate();
+  // Extract date
+  int splitT = formattedDate.indexOf("T");
+  dayStamp = formattedDate.substring(0, splitT);
+  year = dayStamp.substring(0, 4);
+  month = dayStamp.substring(5, 7);
+  day = dayStamp.substring(8);
+  // Format dateStamp
+  dayStamp = day + "." + month + "." + year;
+  // Format time
+  timeStamp = formattedDate.substring(splitT + 1, formattedDate.length() - 4);
+}
+
+void printDateTime()
+{
+  getDateTime();
   if (millis() - updateLocalTime > 5000)
   {
     updateTimeDHT = millis();
-    timeClient.update();
-    formattedDate = timeClient.getFormattedDate();
-    // Extract date
-    int splitT = formattedDate.indexOf("T");
-    dayStamp = formattedDate.substring(0, splitT);
-    year = dayStamp.substring(0, 4);
-    month = dayStamp.substring(5, 7);
-    day = dayStamp.substring(8);
-    // Format dateStamp
-    dayStamp = day + "." + month + "." + year;
-    // Format time
-    timeStamp = formattedDate.substring(splitT + 1, formattedDate.length() - 4);
-    oledPrint(timeStamp, 88, 2);
     oledPrint(dayStamp, 2, 2);
+    oledPrint(timeStamp, 88, 2);
   }
 }
 
@@ -324,19 +380,19 @@ void callbackOnMessage(char* topic, byte* payload, unsigned int length) {
   } else if (_topic == "room/getmeteodata") {
     readDHT();
     publishMeteodataTelegram();
-  } else if(_topic == "room/getweather") {
+  } else if (_topic == "room/getweather") {
     buffer_line_weather = String((char*)payload);
-//    weather = jsonParser.getWeatherData(buffer_line_weather);
+    //    weather = jsonParser.getWeatherData(buffer_line_weather);
   }
 }
 
 void publishMeteodataTelegram() {
   String rez = "{";
-  rez += "\"temperature\":"+String(temperature)+",";
-  rez += "\"humidity\":"+String(humidity)+",";
-  rez += "\"ppm\":"+String(ppm);
+  rez += "\"temperature\":" + String(temperature) + ",";
+  rez += "\"humidity\":" + String(humidity) + ",";
+  rez += "\"ppm\":" + String(ppm);
   rez += "}";
-  int rezLen = 2*rez.length();
+  int rezLen = 2 * rez.length();
   char msgBuffer[rezLen];
   rez.toCharArray(msgBuffer, rezLen);
   Serial.println(msgBuffer);
