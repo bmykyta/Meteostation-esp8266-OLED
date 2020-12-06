@@ -58,10 +58,12 @@ String city = "Kharkiv";
 String units = "metric";  // or "imperial"
 String language = "en";
 unsigned long updateTimeDHT = 0;
+unsigned long updateTimeTelegramDHT = 0;
 unsigned long updateTimeWeather = 0;
 unsigned long updateTimeGasSensor = 0;
 unsigned long updateTimeHighTemp = 0;
 unsigned long updateLocalTime = 0;
+unsigned long updateDrawDisplay = 0;
 int ledStatus = 0; // led status
 int current_mode = 0;
 float humidity; // humidity - влажность воздуха получаемая на текущем модуле DHT-11
@@ -113,16 +115,48 @@ void setup() {
   dht.begin();
   gasSensorSetup();
   getWeather();
+  readDHT();
 }
 
 void loop() {
-
+  butt = !digitalRead(button);
+  mqttLoop();
   if (millis() - updateTimeDHT > 2000) {
     updateTimeDHT = millis();
-
     readDHT();
-    //    drawPage1();
-    drawPage2();
+  }
+  switchMode();
+  displayedMode();
+}
+
+void switchMode() {
+  if (butt == HIGH && butt_flag == false && millis() - last_press > 200) {
+    butt_flag = true;
+    current_mode = !current_mode;
+    last_press = millis();
+  }
+
+  if (butt == LOW && butt_flag == true) {
+    butt_flag = false;
+  }
+}
+
+void displayedMode() {
+  if (current_mode == 0) {
+    if (millis() - updateDrawDisplay > 1000) {
+      updateDrawDisplay = millis();
+      drawPage1();
+    }
+  } else {
+    if (millis() - updateDrawDisplay > 1000) {
+      updateDrawDisplay = millis();
+      drawPage2();
+    }
+  }
+
+  if (millis() - updateTimeTelegramDHT > 15000) {
+    updateTimeTelegramDHT = millis();
+    publishDhtData(temperature, humidity, ppm);
   }
 }
 
@@ -130,25 +164,22 @@ void drawPage1()
 {
   display.clearDisplay();
   display.setTextColor(WHITE, BLACK);
-  //  drawCloud(0, 0);
   printDatetime();
   drawThermometer(4, 13);
-
-  //publishDhtData(temperature, humidity, ppm);
-  // print temperatute THERMOMETER_WIDTH
-  oledPrint(String(temperature), 2 + LITTLE_CLOUD_WIDTH, 16, 0);
+  // print temperatute
+  oledPrint(String(temperature), LITTLE_CLOUD_WIDTH + 2, 16, 0);
   display.write("C");
   display.write(248);
   // print humidity
   drawRaindrop(2, 32);
-  oledPrint(String(humidity) + "%", 2 + LITTLE_CLOUD_WIDTH, 37);
+  oledPrint(String(humidity) + "%", LITTLE_CLOUD_WIDTH + 2, 37);
   // print co2 value
   drawLittleCloud(0, 49);
   int y_little_cloud = 52;
-  oledPrint("CO", 3 + LITTLE_CLOUD_WIDTH, y_little_cloud, 0);
-  display.setCursor(15 + LITTLE_CLOUD_WIDTH, y_little_cloud + 3);
+  oledPrint("CO", LITTLE_CLOUD_WIDTH + 3, y_little_cloud, 0);
+  display.setCursor(LITTLE_CLOUD_WIDTH + 15, y_little_cloud + 3);
   display.write(253);
-  oledPrint(":" + String(ppm) + " ppm", 19 + LITTLE_CLOUD_WIDTH, y_little_cloud);
+  oledPrint(":" + String(ppm) + " ppm", LITTLE_CLOUD_WIDTH + 19, y_little_cloud);
 
   display.display();
 }
@@ -158,8 +189,7 @@ void drawPage2()
 {
   display.clearDisplay();
   display.setTextColor(WHITE, BLACK);
-  printDateTime();
-  drawCloud(0, 12);
+  drawCloud(0, 10);
   // update weather one time per hour
   if (millis() - updateTimeWeather > HOURS_IN_MLSECS(1))
   {
@@ -176,13 +206,23 @@ void printWeather()
   float   feels_like = current_weather->feels_like;
   float   pressure = current_weather->pressure;
   uint8_t humidity = current_weather->humidity;
-  uint8_t louds = current_weather->clouds;
+  uint8_t clouds = current_weather->clouds;
   int     wind_speed = current_weather->wind_speed;
   String  main = current_weather->main;
   String  description = current_weather->description;
   String  city = current_weather->city;
   
-  oledPrint(city, 2 + CLOUD_WIDTH, 10);
+  oledPrint(city, 0, 0);
+  oledPrint(description, 50, 0);
+  oledPrint("Humidity:" + String(humidity) + "%", CLOUD_WIDTH - 2, 10);
+  oledPrint("Wind: " + String(wind_speed) + "m/s", CLOUD_WIDTH + 2, 20);
+  oledPrint("Clouds: " + String(clouds) + "%", CLOUD_WIDTH + 2, 30);
+  oledPrint("Temp:" + String(temp), CLOUD_WIDTH + 1, 40, 0);
+  display.write(248);
+  display.write("C");
+  oledPrint("Feels like:" + String(feels_like), 2 , 50, 0);
+  display.write(248);
+  display.write("C");
 }
 
 void getWeather()
@@ -274,15 +314,17 @@ void getDateTime()
   timeStamp = formattedDate.substring(splitT + 1, formattedDate.length() - 4);
 }
 
-void printDateTime()
+void printDatetime()
 {
   getDateTime();
-  if (millis() - updateLocalTime > 5000)
+  oledPrint(dayStamp, 2, 0);
+  oledPrint(timeStamp, 88, 0);
+  /*if (millis() - updateLocalTime > 5000)
   {
-    updateTimeDHT = millis();
-    oledPrint(dayStamp, 2, 2);
-    oledPrint(timeStamp, 88, 2);
-  }
+    updateLocalTime = millis();
+    oledPrint(dayStamp, 2, 0);
+    oledPrint(timeStamp, 88, 0);
+  }*/
 }
 
 void readDHT() {
