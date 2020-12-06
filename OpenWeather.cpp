@@ -30,9 +30,7 @@ bool OpenWeather::parseRequest(String url)
 
   if (!client.connect(host, 443))
   {
-    if (DEBUG_FLAG == true) {
-      Serial.println("Connection failed.");
-    }
+    Serial.println("Connection failed.");
     return isParsed;
   }
   client.print("GET " + url + " HTTP/1.1\r\n" + "Host: " + host + "\r\n" + "Connection: close\r\n\r\n");
@@ -49,9 +47,7 @@ bool OpenWeather::parseRequest(String url)
 
     if ((millis() - timeout) > 5000UL)
     {
-      if (DEBUG_FLAG == true) {
-        Serial.println("HTTP header timeout");
-      }
+      Serial.println("HTTP header timeout");
       client.stop();
       return isParsed;
     }
