@@ -11,6 +11,7 @@
 #define MQTTPORT 1883
 #define MQTTUSER ""
 #define MQTTPASS ""
+#define OWMTOKEN "your_owm_token"
 
 #define CLOUD_WIDTH 46
 #define CLOUD_HEIGHT 35
